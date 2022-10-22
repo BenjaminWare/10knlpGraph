@@ -1,0 +1,38 @@
+{
+    "nodes":[{
+        "id":"MSFT"
+    },
+    {
+        "id":"AAPL"
+    },
+    {
+        "id":"CVNA"
+    },
+    {
+        "id":"F"
+    },{
+        "id":"TSLA"
+    }],
+    "links":[{
+        "source":"MSFT",
+        "target":"AAPL",
+        "value":0.1
+    },{
+        "source":"CVNA",
+        "target":"AAPL",
+        "value": 0.1
+    },
+    {
+        "source":"F",
+        "target":"AAPL",
+        "value": 0.1
+    },{
+        "source":"TSLA",
+        "target":"AAPL",
+        "value": 0.1
+    },{
+        "source":"TSLA",
+        "target":"F",
+        "value": 0.8
+    }]
+}
