@@ -9,18 +9,22 @@
 </head>
 <style>
     body {
-        background-color:cornsilk;
+        background-color:white;
     }
 </style>
 <body>
     
 </body>
 <script>
-graph = fetch('./data.json')
+
+let nodes;
+let links;
+graph = fetch('./upsTree2.json')
     .then((response) => response.json())
     .then((json) =>  {
-        console.log(json)
-  return ForceGraph(json, {
+       
+    data = json
+  return ForceGraph(data, {
   nodeId: d => d.id,
   nodeGroup: d => 0,//Could be used for coloring nodes, now there all the same, d => d.group,
   nodeTitle: d => `${d.id}`,
@@ -32,9 +36,18 @@ graph = fetch('./data.json')
   height: 1000,
   invalidation: undefined// a promise to stop the simulation when the cell is re-run
 })
+
     });
 
-graph.then(g =>document.body.appendChild(g));
+graph.then(g =>{
+  document.body.appendChild(g)
+  window.setInterval(function(){
+    let index = g.nodes.findIndex(node => node.id === 'dal')
+  g.nodes = g.nodes.slice(1,3000)
+  g.updateNodes(g.nodes)
+}, 1000);
+
+});
 
 // Copyright 2021 Observable, Inc.
 // Released under the ISC license.
@@ -63,7 +76,7 @@ function ForceGraph({
   linkStrokeWidth = 1.5, // given d in links, returns a stroke width in pixels
   linkStrokeLinecap = "round", // link stroke linecap
   linkStrength,
-  linkDistance = d => 100 * (1 -d.value) + 75,
+  linkDistance = d => 75 * (1 -d.value) + 25,
   colors = d3.schemeTableau10, // an array of color strings, for the node groups
   width = 640, // outer width, in pixels
   height = 400, // outer height, in pixels
@@ -87,7 +100,7 @@ function ForceGraph({
 
   // Replace the input nodes and links with mutable objects for the simulation.
   nodes = d3.map(nodes, (_, i) => ({id: N[i]}));
-  links = d3.map(links, (_, i) => ({source: LS[i], target: LT[i],value:LVAL[i]}));
+  links = d3.map(links, (_, i) => ({source: LS[i], target: LT[i],value:LVAL[i],id:i}));
 
   // Compute default domains.
   if (G && nodeGroups === undefined) nodeGroups = d3.sort(G);
@@ -96,7 +109,7 @@ function ForceGraph({
   const color = nodeGroup == null ? null : d3.scaleOrdinal(nodeGroups, colors);
 
   // Construct the forces.
-  const forceNode = d3.forceManyBody()
+  const forceNode = d3.forceManyBody().strength(-300)
 
   const forceLink = d3.forceLink(links).id(({index: i}) => N[i]).distance(linkDistance)
   if (nodeStrength !== undefined) forceNode.strength(nodeStrength);
@@ -107,6 +120,7 @@ function ForceGraph({
       .force("charge", forceNode)
       .force("x", d3.forceX())
       .force("y", d3.forceY())
+      .force("collision",d3.forceCollide([3+nodeRadius]))
       .on("tick", ticked);
 
   const svg = d3.create("svg")
@@ -115,50 +129,67 @@ function ForceGraph({
       .attr("viewBox", [-width / 2, -height / 2, width, height])
       .attr("style", "max-width: 100%; height: auto; height: intrinsic;");
 
-  const link = svg.append("g")
-      .attr("stroke", linkStroke)
-      .attr("stroke-opacity", linkStrokeOpacity)
-      .attr("stroke-width", typeof linkStrokeWidth !== "function" ? linkStrokeWidth : null)
-      .attr("stroke-linecap", linkStrokeLinecap)
-    .selectAll("line")
-    .data(links)
-    .join("line");
+
 
   if (W) link.attr("stroke-width", ({index: i}) => W[i]);
 
-  const node = svg.append("g")
+  
+  const nodeWrapper = svg.append("g")
       .attr("fill", nodeFill)
       .attr("stroke", nodeStroke)
       .attr("stroke-opacity", nodeStrokeOpacity)
       .attr("stroke-width", nodeStrokeWidth)
-    .selectAll("g")
-    .data(nodes)
-    .join("g")
-    .attr("id",(d,i) => graphName + "group" + i)
-    .call(drag(simulation))
+
+  //node and link singular are the d3 data object that controls the dom elements, links and nodes are the data points that node and link use
+  let node;
+    updateNodes = (nodes) => {
+      console.log(nodes);
+      //updating Nodes causes an update to links
+      //Kind of a slow implementation, TODO remove links that are related to a node that got dropped
+      links = links.filter((link) => nodes.includes(link.source) && nodes.includes(link.target))
+      updateLinks(links)
+      node = nodeWrapper.selectAll("g")
+        .data(nodes, node => node.id)
+        .join(
+        enter => enter.append("g"),
+        update => update,
+        exit => exit.remove()
+        ).attr("id",(d,i) => graphName + "group" + i)
+        .call(drag(simulation))
+    }
+
+
+  const linkWrapper = svg.append("g")
+    .attr("stroke", linkStroke)
+    .attr("stroke-opacity", linkStrokeOpacity)
+    .attr("stroke-width", typeof linkStrokeWidth !== "function" ? linkStrokeWidth : null)
+    .attr("stroke-linecap", linkStrokeLinecap)
+
+
+  let link;
+    updateLinks = (links) => {
+      link = linkWrapper.selectAll("line")
+        .data(links,link => link.id)
+        .join("line");
+    }
+
+
+    updateNodes(nodes)
+    
       
 
-  node.append("circle").attr("r", nodeRadius).attr("id",(d,i) => graphName + "circle" + i).attr("fill",(d,i) => `url(#${graphName}pattern${i})`)
-  node.append("defs")
-    .append("pattern").attr("patterunUnits","userSpaceOnUse").attr("height",1.5*nodeRadius).attr("width",1.5*nodeRadius).attr("id",(d,i) => graphName + "pattern" + i)
-    .append("image").attr("xlink:href",(d) => `./ticker_icons/${d.id.toLocaleLowerCase()}.png`).attr("x",0.25*nodeRadius).attr("y",0.25*nodeRadius).attr("height",1.5*nodeRadius).attr("width",1.5*nodeRadius)
-  if (G) node.attr("fill", ({index: i}) => color(G[i]));
 
-  if (T) node.append("text").attr("dx", 12).attr("font-size","20px").attr("stroke-width","0").attr("stroke","black").attr("fill","black")
-      .attr("dy", ".35em").text(({index: i}) => (T[i]).substring(0,10)).attr("display","none").attr("id",(d,i) => graphName + "text" + i).attr("z-index","1")
+ 
+
+  //This line appends circles to the chart
+  //node.append("circle").attr("r", nodeRadius).attr("id",(d,i) => graphName + "circle" + i).attr("fill",(d,i) => `url(#${graphName}pattern${i})`)
+  //This line appends circular images to the chart
+  node.append("image").attr("mask","url(#icon-mask)").attr("xlink:href",(d) => `./ticker_icons/${d.id.toLocaleLowerCase()}.png`).attr("x",-nodeRadius).attr("y",-nodeRadius).attr("height",2*nodeRadius).attr("width",2*nodeRadius)
+  // node.append("text").text(d => d.id)
 
 
-  //Handles showing labels, should be changed to one tooltip at the bottom, so that it can be ordered on top of other elements
-  node.on("mouseover", (e,d) => {
-    //The user will mouseover the circle, which has id = circleNum where Num is what we need
-        matches = e.target.id.match(/\d+$/);
-        if(matches) {
-            console.log(matches[0]);
-        d3.select(`#${graphName}text${matches[0]}`).attr("display","block")
-        }
-      }).on("mouseout",() => {
-        node.selectAll("text").attr("display","none")
-      });
+  svg.append("defs").append("mask").attr("id","icon-mask").append("circle").attr("r",1.25*nodeRadius).attr("fill","white")
+  
   // Handle invalidation.
   if (invalidation != null) invalidation.then(() => 
   {
@@ -198,9 +229,9 @@ function ForceGraph({
       .on("start", dragstarted)
       .on("drag", dragged)
       .on("end", dragended);
-  }
+  } 
 
-  return Object.assign(svg.node(), {scales: {color}});
+  return Object.assign(svg.node(), {scales: {color}},{nodes:nodes},{links:links},{updateNodes:updateNodes},{updatelinks:updateLinks});
 
 }
 </script>
