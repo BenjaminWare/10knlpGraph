@@ -1,17 +1,22 @@
 {
     "nodes":[{
-        "id":"MSFT"
+        "id":"MSFT",
+        "market_cap":12
     },
     {
-        "id":"AAPL"
+        "id":"AAPL",
+        "market_cap":14
     },
     {
-        "id":"CVNA"
+        "id":"CVNA",
+        "market_cap":3
     },
     {
-        "id":"F"
+        "id":"F",
+        "market_cap":5
     },{
-        "id":"TSLA"
+        "id":"TSLA",
+        "market_cap":8
     }],
     "links":[{
         "source":"MSFT",

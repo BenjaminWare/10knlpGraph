@@ -15,37 +15,65 @@
 <body>
     
 </body>
-<script>
+<script async>
 
-let nodes;
-let links;
+
 graph = fetch('./upsTree2.json')
     .then((response) => response.json())
     .then((json) =>  {
-       
-    data = json
-  return ForceGraph(data, {
-  nodeId: d => d.id,
-  nodeGroup: d => 0,//Could be used for coloring nodes, now there all the same, d => d.group,
-  nodeTitle: d => `${d.id}`,
-  colors: ["#37cd46"], //Defines the ordinal colors, only needs to take one
-  nodeStroke:"#000",
-  nodeStrokeWidth:0,
-  nodeRadius:20,
-  width:1400,
-  height: 1000,
-  invalidation: undefined// a promise to stop the simulation when the cell is re-run
-})
+       let {nodes,links} = json
+       //nodes and links need ids, nodes should have them but, links don't, so we create them
 
-    });
+     links.forEach((link,i) => {link.id = Math.random()})//could also just be i
+  return {
+    'graph':ForceGraph({nodes,links}, {
+      nodeId: d => d.id,
+      nodeGroup: d => 0,//Could be used for coloring nodes, now there all the same, d => d.group,
+      nodeTitle: d => `${d.id}`,
+      nodeStroke:"#000",
+      nodeStrokeWidth:0,
+      nodeRadius:20,
+      width:1400,
+      height: 1000,
+      invalidation: undefined// a promise to stop the simulation when the cell is re-run
+    }),
+      'nodes':json.nodes,
+      'links':json.links
+    }
+  });
 
 graph.then(g =>{
-  document.body.appendChild(g)
-  window.setInterval(function(){
-    let index = g.nodes.findIndex(node => node.id === 'dal')
-  g.nodes = g.nodes.slice(1,3000)
-  g.updateNodes(g.nodes)
-}, 1000);
+  //draws graph on the screen
+  document.body.appendChild(g.graph)
+
+  //SWAPS ALL GRAPH DATA
+  // newData = fetch('./upsTree2.json')
+  //   .then((response) => response.json())
+  //   .then((json) =>  {
+  //       // g.nodes = json.nodes
+  //       // g.links = json.links
+
+  //     setInterval( () => {
+
+  //       g.nodes = json.nodes
+  //       g.links = json.links
+  //       // g.nodes.pop()
+
+  //        g.graph.update(g.nodes,g.links)
+  //     },3000)
+  
+  //   })
+  setTimeout(() => {
+    g.nodes.push({'id':'msft'})
+    g.links.push({'source':'msft','target':'ups','value':0.8,'id':Math.random()})
+    g.graph.update(g.nodes,g.links)
+    setInterval(() => {
+      g.nodes.pop()
+      g.graph.update(g.nodes,g.links)
+    },2000)
+  },2000)
+
+  
 
 });
 
@@ -67,7 +95,6 @@ function ForceGraph({
   nodeStrokeWidth = 1.5, // node stroke width, in pixels
   nodeStrokeOpacity = 1, // node stroke opacity
   nodeRadius = 5, // node radius, in pixels
-  nodeStrength,
   linkSource = ({source}) => source, // given d in links, returns a node identifier string
   linkTarget = ({target}) => target, // given d in links, returns a node identifier string
   linkValue = ({value}) => value,
@@ -75,54 +102,18 @@ function ForceGraph({
   linkStrokeOpacity = 0.6, // link stroke opacity
   linkStrokeWidth = 1.5, // given d in links, returns a stroke width in pixels
   linkStrokeLinecap = "round", // link stroke linecap
-  linkStrength,
   linkDistance = d => 75 * (1 -d.value) + 25,
-  colors = d3.schemeTableau10, // an array of color strings, for the node groups
   width = 640, // outer width, in pixels
   height = 400, // outer height, in pixels
   invalidation // when this promise resolves, stop the simulation
 } = {}) {
 
-    //keep only valid datapoints
-    function intern(value) {
-    return value !== null && typeof value === "object" ? value.valueOf() : value;
-  }
-  // Compute values.
-  const N = d3.map(nodes, nodeId).map(intern);
-  const LS = d3.map(links, linkSource).map(intern);
-  const LT = d3.map(links, linkTarget).map(intern);
-  const LVAL = d3.map(links,linkValue).map(intern);
 
-  if (nodeTitle === undefined) nodeTitle = (_, i) => N[i];
   const T = nodeTitle == null ? null : d3.map(nodes, nodeTitle);
-  const G = nodeGroup == null ? null : d3.map(nodes, nodeGroup).map(intern);
-  const W = typeof linkStrokeWidth !== "function" ? null : d3.map(links, linkStrokeWidth);
 
-  // Replace the input nodes and links with mutable objects for the simulation.
-  nodes = d3.map(nodes, (_, i) => ({id: N[i]}));
-  links = d3.map(links, (_, i) => ({source: LS[i], target: LT[i],value:LVAL[i],id:i}));
 
-  // Compute default domains.
-  if (G && nodeGroups === undefined) nodeGroups = d3.sort(G);
-
-  // Construct the scales.
-  const color = nodeGroup == null ? null : d3.scaleOrdinal(nodeGroups, colors);
-
-  // Construct the forces.
-  const forceNode = d3.forceManyBody().strength(-300)
-
-  const forceLink = d3.forceLink(links).id(({index: i}) => N[i]).distance(linkDistance)
-  if (nodeStrength !== undefined) forceNode.strength(nodeStrength);
-  if (linkStrength !== undefined) forceLink.strength(linkStrength);
-
-  const simulation = d3.forceSimulation(nodes)
-      .force("link", forceLink)
-      .force("charge", forceNode)
-      .force("x", d3.forceX())
-      .force("y", d3.forceY())
-      .force("collision",d3.forceCollide([3+nodeRadius]))
-      .on("tick", ticked);
-
+  
+  //svg wrapper
   const svg = d3.create("svg")
       .attr("width", width)
       .attr("height", height)
@@ -130,8 +121,6 @@ function ForceGraph({
       .attr("style", "max-width: 100%; height: auto; height: intrinsic;");
 
 
-
-  if (W) link.attr("stroke-width", ({index: i}) => W[i]);
 
   
   const nodeWrapper = svg.append("g")
@@ -142,20 +131,74 @@ function ForceGraph({
 
   //node and link singular are the d3 data object that controls the dom elements, links and nodes are the data points that node and link use
   let node;
-    updateNodes = (nodes) => {
-      console.log(nodes);
-      //updating Nodes causes an update to links
+  let link;
+  let simulation;
+  let prevNodes;
+  let prevLinks;
+    update = (nodes,links) => {
+
+      
+
+      const N = d3.map(nodes, nodeId)
+
       //Kind of a slow implementation, TODO remove links that are related to a node that got dropped
-      links = links.filter((link) => nodes.includes(link.source) && nodes.includes(link.target))
-      updateLinks(links)
+
+      links = links.filter((link) => N.includes(link.source) && N.includes(link.target) || N.includes(link.source.id) && N.includes(link.target.id))
+  
+
+        //create link force to drive simulation
+        const forceLink = d3.forceLink(links).id(({index: i}) => N[i]).distance(linkDistance)
+      if(simulation) {
+           simulation.nodes(nodes).force("link",forceLink) 
+         } 
+         else {
+          simulation = d3.forceSimulation(nodes)
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("link",forceLink)
+            .force("x", d3.forceX())
+            .force("y", d3.forceY())
+            .force("collision",d3.forceCollide([3+nodeRadius]))
+            .on("tick", ticked);
+         }
+      //changes node html elements
       node = nodeWrapper.selectAll("g")
         .data(nodes, node => node.id)
         .join(
-        enter => enter.append("g"),
-        update => update,
+        enter => enter
+        .append("g") //appends group to be moved around
+        // .append('text').text(d => d.id)
+        .append("image") //appends and styles image of company logo
+        .attr("mask","url(#icon-mask)")
+        .attr("xlink:href",(d) => `./ticker_icons/${d.id.toLocaleLowerCase()}.png`)
+        .attr("x",-nodeRadius).attr("y",-nodeRadius)
+        .attr("height",2*nodeRadius)
+        .attr("width",2*nodeRadius) 
+        .select(function(){
+          return this.parentNode; //makes sure node returns to the g tag, not the image tag so the image is what gets moved
+        }),
+        update => update.attr('fill','red'),
         exit => exit.remove()
         ).attr("id",(d,i) => graphName + "group" + i)
         .call(drag(simulation))
+
+        //changes link html elements
+        link = linkWrapper.selectAll("line")
+            .data(links,link => link.id)
+            .join("line");
+         //updates what nodes and links are in the sim
+
+        //If sim isn't defined, create it and all forces, if it is just change the nodes and links as that's what is being updated
+        function ticked() {
+          
+            link
+              .attr("x1", d => d.source.x)
+              .attr("y1", d => d.source.y)
+              .attr("x2", d => d.target.x)
+              .attr("y2", d => d.target.y);
+
+
+            node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+      }
     }
 
 
@@ -166,15 +209,10 @@ function ForceGraph({
     .attr("stroke-linecap", linkStrokeLinecap)
 
 
-  let link;
-    updateLinks = (links) => {
-      link = linkWrapper.selectAll("line")
-        .data(links,link => link.id)
-        .join("line");
-    }
 
 
-    updateNodes(nodes)
+    //draws given inital nodes and links
+    update(nodes,links)
     
       
 
@@ -184,8 +222,7 @@ function ForceGraph({
   //This line appends circles to the chart
   //node.append("circle").attr("r", nodeRadius).attr("id",(d,i) => graphName + "circle" + i).attr("fill",(d,i) => `url(#${graphName}pattern${i})`)
   //This line appends circular images to the chart
-  node.append("image").attr("mask","url(#icon-mask)").attr("xlink:href",(d) => `./ticker_icons/${d.id.toLocaleLowerCase()}.png`).attr("x",-nodeRadius).attr("y",-nodeRadius).attr("height",2*nodeRadius).attr("width",2*nodeRadius)
-  // node.append("text").text(d => d.id)
+    // node.append("text").text(d => d.id)
 
 
   svg.append("defs").append("mask").attr("id","icon-mask").append("circle").attr("r",1.25*nodeRadius).attr("fill","white")
@@ -196,16 +233,7 @@ function ForceGraph({
     console.log("stopping sim")
     simulation.stop()});
 
-  function ticked() {
-    link
-      .attr("x1", d => d.source.x)
-      .attr("y1", d => d.source.y)
-      .attr("x2", d => d.target.x)
-      .attr("y2", d => d.target.y);
 
-
-    node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
-  }
 
   function drag(simulation) {    
     function dragstarted(event) {
@@ -231,7 +259,7 @@ function ForceGraph({
       .on("end", dragended);
   } 
 
-  return Object.assign(svg.node(), {scales: {color}},{nodes:nodes},{links:links},{updateNodes:updateNodes},{updatelinks:updateLinks});
+  return Object.assign(svg.node(),{update:update});
 
 }
 </script>
