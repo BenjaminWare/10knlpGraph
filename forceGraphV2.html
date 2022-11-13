@@ -1,4 +1,4 @@
-<!-- TODO tick and drag are mad weird and we have to make them work with instance variables, can we initialize link and node, before calling update??? -->
+<!-- TODO tick and drag are mad weird and we have to make them work with instance variables, can we initialize link and node, before calling update?? -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17,9 +17,8 @@
   <button onclick="myFunction()">Click me</button>
 </body>
 <script async>
+  let deleteFlag = false;
 class Graph {
-  //event handler to be set by the user
-  onNodeClicked
 
   constructor({nodes,links},{
   graphName = "", //used with the ids only matters when multiple of the graph are used
@@ -41,7 +40,9 @@ class Graph {
     this.nodeRadius = nodeRadius
     this.nodeFill = nodeFill
     this.graphName = graphName
-
+    //EVENT HANLDERS TO BE SET BY USER
+    //when a node is clicked (e,d) e = event, d = data, so if msft node is clicked d is {'id':MSFT,...}
+    this.onNodeClicked
     //Data
     this.nodes = nodes
     this.links = links
@@ -54,17 +55,19 @@ class Graph {
     
     this.graph = this.svg.node()
 
-    this.nodeWrapper = this.svg.append("g")
-        .attr("fill", nodeFill)
-        .attr("stroke", nodeStroke)
-        .attr("stroke-opacity", nodeStrokeOpacity)
-        .attr("stroke-width", nodeStrokeWidth)
 
     this.linkWrapper = this.svg.append("g")
       .attr("stroke", linkStroke)
       .attr("stroke-opacity", linkStrokeOpacity)
       .attr("stroke-width", typeof linkStrokeWidth !== "function" ? linkStrokeWidth : null)
       .attr("stroke-linecap", linkStrokeLinecap)
+
+    this.nodeWrapper = this.svg.append("g")
+        .attr("fill", nodeFill)
+        .attr("stroke", nodeStroke)
+        .attr("stroke-opacity", nodeStrokeOpacity)
+        .attr("stroke-width", nodeStrokeWidth)
+
     
     
     //Simulation initialized
@@ -79,40 +82,48 @@ class Graph {
             .force("y", d3.forceY())
             .force("collision",d3.forceCollide(d => this.nodeRadius(d)))
     
-    this.update(this.nodes,this.links)
+    this.update()
     
     //TODO could be zoom in zoom out
 
 
   }
 
-  getNodes() {
-    return this.nodes
+  //Given array of nodes and links, adds unique nodes and links to simulation
+  addData(newNodes,newLinks) {
+    //removes dupes from params
+    newNodes = Array.from(new Set(newNodes))
+    newLinks = Array.from(new Set(newLinks))
+
+    //adds unique nodes and links
+    this.links.push(...(newLinks.filter((link) => this.links.indexOf(link) === -1)))
+    this.nodes.push(...(newNodes.filter((node) => this.nodes.indexOf(node) === -1)))
+    //updates svg
+    this.update()
   }
-  getLinks() {
-    return this.links
+  removeData(oldNodes,oldLinks) {
+    //removes nodes
+    this.links = this.links.filter(node => !oldLinks.some(oldLink => oldLink.id === link.id))
+    this.nodes = this.nodes.filter(node => !oldNodes.some(oldNode => oldNode.id === node.id))
+    //updates svg
+    this.update()
   }
 
 
   //update function to be called when changing nodes and links
-  update = (nodes,links) => {
-    const N = d3.map(nodes, d => d.id)
+  update = () => {
+    const N = d3.map(this.nodes, d => d.id)
 
     //Kind of a slow implementation, TODO remove links that are related to a node that got dropped
-    links = links.filter((link) => N.includes(link.source) && N.includes(link.target) || N.includes(link.source.id) && N.includes(link.target.id))
-
-
-    //create link force to drive simulation
-    const forceLink = d3.forceLink(links).id(({index: i}) => N[i]).distance(this.linkDistance)
-      
+    this.links = this.links.filter((link) => (N.includes(link.source) ||  N.includes(link.source.id)) && (N.includes(link.target) || N.includes(link.target.id)))
 
     //changes link html elements
     let link = this.linkWrapper.selectAll("line")
-          .data(links,link => link.id)
+          .data(this.links,link => link.id)
           .join("line");
     //changes node html elements
     let node = this.nodeWrapper.selectAll("g")
-      .data(nodes, node => node.id)
+      .data(this.nodes, node => node.id)
       .join(
       enter => enter
         .append("g") //appends group to be moved around
@@ -127,29 +138,39 @@ class Graph {
         .select(function() {
           return this.parentNode; //makes sure node returns to the g tag, not the image tag so the image is what gets moved
         }),
-      exit => exit.remove())
+      )
       .attr("id",(d,i) => this.graphName + "group" + i)
-      // .call(drag(this.simulation))
-    this.simulation.nodes(nodes).force("link",forceLink).on("tick", ticked);
-      //Drag part of the sim
+      .call(drag(this.simulation))
+
+
+    //create link force to drive simulation
+    const forceLink = d3.forceLink(this.links).id(({index: i}) => N[i]).distance(this.linkDistance)
+    this.simulation.nodes(this.nodes).force("link",forceLink).on("tick", ticked).alphaTarget(0.3).restart();
+
+    //Drag part of the sim
     function drag(simulation) {    
-      function dragstarted(event) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        event.subject.fx = event.subject.x;
-        event.subject.fy = event.subject.y;
-      }
-      
-      function dragged(event) {
-        event.subject.fx = event.x;
-        event.subject.fy = event.y;
-      }
-      
-      function dragended(event) {
-        if (!event.active) simulation.alphaTarget(0);
-        event.subject.fx = null;
-        event.subject.fy = null;
-      }
+    function dragstarted(event) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      event.subject.fx = event.subject.x;
+      event.subject.fy = event.subject.y;
     }
+    
+    function dragged(event) {
+      event.subject.fx = event.x;
+      event.subject.fy = event.y;
+    }
+    
+    function dragended(event) {
+      if (!event.active) simulation.alphaTarget(0);
+      event.subject.fx = null;
+      event.subject.fy = null;
+    }
+    
+    return d3.drag()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended);
+  } 
     //What to do on tick
     function ticked() {
       link
@@ -161,12 +182,11 @@ class Graph {
 
       node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
     }
-      console.log(this.node)
     }
 
 }
 
-graph = fetch('./sample.json')
+graph = fetch('./upsTree.json')
     .then((response) => response.json())
     .then((json) =>  {
 
@@ -194,226 +214,49 @@ graph.then(g =>{
   allNodes = g.allNodes
   //draws graph on the screen
   document.body.appendChild(graph.graph)
-  graph.onNodeClicked = () => {console.log('hey')}
-  console.log(graph.onNodeClicked)
-  graph.onNodeClicked = whenNodeClicked
-  //This scope gives access to g, so we define the globally declared function here
-   whenNodeClicked = (node,allNodes,allLinks) => {
-    //We need access to g here
-    linksToAdd = []
-    nodesToAdd = allLinks.reduce((filtered, link) => {
-      //IMPORTANT Simulation updates links to make the id change from a string, which matches node id to an object, which is a node and has an id property
-      link.source = link.source.id ? link.source.id : link.source
-      link.target = link.target.id ? link.target.id : link.target
-      console.log(link.source + " : " + link.target)
-      if(link.source == node.id) {
-        filtered.push(link.target)
-        linksToAdd.push(link)
+  graph.onNodeClicked = (e,d) => {
+    const {nodes: nodesToAdd,links: linksToAdd} = whenNodeClicked(d,allNodes,allLinks)
+   graph.addData(nodesToAdd,linksToAdd)
 
-      }
-      else if(link.target == node.id) {
-        filtered.push(link.source)
-        linksToAdd.push(link)
-
-      }
-      return filtered
-    },[])//This empty array is the initial value of filtered, which becomes nodesToAdd
- 
-    
-    nodesToAdd = allNodes.filter(node => nodesToAdd.includes(node.id))
-    //Remove links and nodes from all when they are entered, this makes deleting and readding nodes impossible
-    // allLinks = allLinks.filter(link => !linksToAdd.includes(link))
-    // allNodes = allNodes.filter(node => !nodesToAdd.includes(node))
-    
-    //TODO catch duplicates
-    g.nodes.push(...(nodesToAdd.filter((node) => g.nodes.indexOf(node) === -1)))
-    g.links.push(...(linksToAdd.filter((link) => g.links.indexOf(link) === -1)))
-    g.update(g.nodes,g.links)
-    //returns both the nodes and links that should be added based on this click
-    return {nodes:nodesToAdd,links:linksToAdd}
   }
+  
 
-  myFunction = () => {
-      if(Math.random() > 0.5) {
-        graph.nodes.pop()
-      }
-      else {
-        graph.nodes.shift()
-      }
-      graph.update(g.nodes,g.links)
+  const whenNodeClicked = (node,allNodes,allLinks) => {
+      linksToAdd = []
+      nodesToAdd = allLinks.reduce((filtered, link) => {
+
+        console.log(link.source)
+        if(link.source.id == node.id) {
+          filtered.push(link.target.id)
+          linksToAdd.push(link)
+
+        }
+        else if(link.target.id == node.id) {
+          filtered.push(link.source.id)
+          linksToAdd.push(link)
+
+        }
+        return filtered
+      },[])//This empty array is the initial value of filtered, which becomes nodesToAdd
+  
+      //adds all the links connect to the new node
+      nodesToAdd.forEach((node) => {
+        allLinks.forEach((link) => {
+          if(link.target.id == node || link.source.id == node) {
+            linksToAdd.push(link)
+          }
+         })
+      })
+      //Switch nodesToAdd from id strings to node objects
+      nodesToAdd = allNodes.filter(node => nodesToAdd.includes(node.id))
+
+
+      //returns both the nodes and links that should be added based on this click
+      console.log(nodesToAdd)
+      return {nodes:nodesToAdd,links:linksToAdd}
     }
   
-
-
-
-
   
-
 });
-
-function ForceGraph({
-  nodes, // an iterable of node objects (typically [{id}, …])
-  links // an iterable of link objects (typically [{source, target,value,id}, …])
-}, {
-  graphName = "", //used with the ids only matters when multiple of the graph are used
-  nodeFill = "currentColor", // node stroke fill (if not using a group color encoding)
-  nodeStroke = "#fff", // node stroke color
-  nodeStrokeWidth = 1.5, // node stroke width, in pixels
-  nodeStrokeOpacity = 1, // node stroke opacity
-  nodeRadius = 5, // node radius, in pixels
-  linkSource = ({source}) => source, // given d in links, returns a node identifier string
-  linkTarget = ({target}) => target, // given d in links, returns a node identifier string
-  linkValue = ({value}) => value,
-  linkStroke = "#999", // link stroke color
-  linkStrokeOpacity = 0.6, // link stroke opacity
-  linkStrokeWidth = 1.5, // given d in links, returns a stroke width in pixels
-  linkStrokeLinecap = "round", // link stroke linecap
-  linkDistance = d => 75 * (1 -d.value) + 25,
-  width = 640, // outer width, in pixels
-  height = 400, // outer height, in pixels
-} = {}) {
-
-  //void function, that is returned to the user as an event handler for a node being clicked on
-  const onNodeClicked = () => console.log('hi')
-
-  
-  //svg wrapper
-  const svg = d3.create("svg")
-      .attr("width", width)
-      .attr("height", height)
-      .attr("viewBox", [-width / 2, -height / 2, width, height])
-      .attr("style", "max-width: 100%; height: auto; height: intrinsic;");
-
-
-
-  
-  const nodeWrapper = svg.append("g")
-      .attr("fill", nodeFill)
-      .attr("stroke", nodeStroke)
-      .attr("stroke-opacity", nodeStrokeOpacity)
-      .attr("stroke-width", nodeStrokeWidth)
-
-  //node and link singular are the d3 data object that controls the dom elements, links and nodes are the data points that node and link use
-  let node;
-  let link;
-  let simulation;
-    update = (nodes,links) => {
-
-      
-
-      const N = d3.map(nodes, d => d.id)
-
-      //Kind of a slow implementation, TODO remove links that are related to a node that got dropped
-      links = links.filter((link) => N.includes(link.source) && N.includes(link.target) || N.includes(link.source.id) && N.includes(link.target.id))
-  
-
-        //create link force to drive simulation
-        const forceLink = d3.forceLink(links).id(({index: i}) => N[i]).distance(linkDistance)
-      if(simulation) {
-           simulation.nodes(nodes).force("link",forceLink) 
-         } 
-         else {
-          simulation = d3.forceSimulation(nodes)
-            .force("charge", d3.forceManyBody().strength(-300))
-            .force("link",forceLink)
-            .force("x", d3.forceX())
-            .force("y", d3.forceY())
-            .force("collision",d3.forceCollide(d => nodeRadius(d)))
-            .on("tick", ticked);
-         }
-
-      //changes link html elements
-      link = linkWrapper.selectAll("line")
-            .data(links,link => link.id)
-            .join("line");
-      //changes node html elements
-      node = nodeWrapper.selectAll("g")
-        .data(nodes, node => node.id)
-        .join(
-        enter => enter
-        .append("g") //appends group to be moved around
-        // .append('text').text(d => d.id)
-        .append("image") //appends and styles image of company logo
-        .attr("mask","url(#icon-mask)")
-        .attr("xlink:href",(d) => `./ticker_icons/${d.id.toLocaleLowerCase()}.png`)
-        .attr("x",d => -nodeRadius(d)).attr("y",d => -nodeRadius(d))
-        .attr("height",d => 2*nodeRadius(d))
-        .attr("width",d => 2*nodeRadius(d)) 
-        .on("click",(e,d) => onNodeClicked ? onNodeClicked(e,d) : null)
-        .select(function(){
-          return this.parentNode; //makes sure node returns to the g tag, not the image tag so the image is what gets moved
-        }),
-        update => update.attr('fill','red'),
-        exit => exit.remove()
-        ).attr("id",(d,i) => graphName + "group" + i)
-        .call(drag(simulation))
-
-
-
-        //If sim isn't defined, create it and all forces, if it is just change the nodes and links as that's what is being updated
-        function ticked() {
-          
-          
-            link
-              .attr("x1", d => d.source.x)
-              .attr("y1", d => d.source.y)
-              .attr("x2", d => d.target.x)
-              .attr("y2", d => d.target.y);
-
-
-            node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
-      }
-    }
-
-
-  const linkWrapper = svg.append("g")
-    .attr("stroke", linkStroke)
-    .attr("stroke-opacity", linkStrokeOpacity)
-    .attr("stroke-width", typeof linkStrokeWidth !== "function" ? linkStrokeWidth : null)
-    .attr("stroke-linecap", linkStrokeLinecap)
-
-
-
-
-    //draws given inital nodes and links
-    update(nodes,links)
-    
-      
-
-
- 
-
-  //This definition can be used to place a mask on the images, doesn't work to well if radi are differeent
-  // svg.append("defs").append("mask").attr("id","icon-mask").append("circle").attr("r",d => 40).attr("fill","white")
-  
-
-
-
-  function drag(simulation) {    
-    function dragstarted(event) {
-      if (!event.active) simulation.alphaTarget(0.3).restart();
-      event.subject.fx = event.subject.x;
-      event.subject.fy = event.subject.y;
-    }
-    
-    function dragged(event) {
-      event.subject.fx = event.x;
-      event.subject.fy = event.y;
-    }
-    
-    function dragended(event) {
-      if (!event.active) simulation.alphaTarget(0);
-      event.subject.fx = null;
-      event.subject.fy = null;
-    }
-    
-    return d3.drag()
-      .on("start", dragstarted)
-      .on("drag", dragged)
-      .on("end", dragended);
-  } 
-  return Object.assign(svg.node(),{onNodeClicked:onNodeClicked,update:update,nodes:nodes,links:links});
-
-}
 </script>
 </html>
